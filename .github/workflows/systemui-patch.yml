@@ -15,7 +15,7 @@ jobs:
       - name: Install Tools & Java
         run: |
           sudo apt-get update
-          sudo apt-get install -y openjdk-17-jdk wget
+          sudo apt-get install -y openjdk-17-jdk wget git
           sudo wget https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O /usr/local/bin/apktool
           sudo chmod +x /usr/local/bin/apktool
           sudo wget https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar -O /usr/local/bin/apktool.jar
@@ -25,16 +25,26 @@ jobs:
         run: |
           wget -O SystemUI.apk "https://nei5-a0eace4761b8.herokuapp.com/stream/325311?hash=960c8a&d=true"
 
-      - name: Decompile SystemUI.apk (Keep Resources Intact)
+      - name: Decompile SystemUI.apk
         run: |
-          # Use -r to skip decoding resources if resource editing is not strictly needed, 
-          # or standard decompile without deleting files
           apktool d -f SystemUI.apk -o decompiled_ui
+
+      - name: Fix Manifest Attribute Error
+        run: |
+          python3 -c '
+          import glob, re
+          for filepath in glob.glob("decompiled_ui/**/AndroidManifest.xml", recursive=True):
+              with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                  content = f.read()
+              content = re.sub(r"\s*android:featureFlag=\"[^\"]*\"", "", content)
+              with open(filepath, "w", encoding="utf-8") as f:
+                  f.write(content)
+          print("Manifest featureFlag cleaned successfully!")
+          '
 
       - name: Recompile and Sign SystemUI.apk
         run: |
-          # Compile without forcing aapt2 strict checks if it fails, using default builder
-          apktool b decompiled_ui -o patched_SystemUI.apk || apktool b decompiled_ui -o patched_SystemUI.apk --no-crunch
+          apktool b decompiled_ui -o patched_SystemUI.apk --use-aapt2
           
           wget https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar -O signer.jar
           java -jar signer.jar -apks patched_SystemUI.apk --allowResign
